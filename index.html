@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>أطلس العالم التفاعلي</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+    <style>
+        :root {
+            --bg-deep: #060a12;
+            --bg-primary: #0b1120;
+            --bg-card: #111b30;
+            --bg-card-hover: #162240;
+            --accent-gold: #d4a853;
+            --accent-copper: #e07040;
+            --accent-teal: #3abfa0;
+            --text-primary: #ece4d8;
+            --text-secondary: #8e96a8;
+            --text-muted: #4e5670;
+            --border: #1a2540;
+            --ocean: #080e1e;
+            --glow-gold: rgba(212,168,83,0.25);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+        .font-data { font-family: 'Space Grotesk', 'Tajawal', sans-serif; }
+
+        /* شاشة التحميل */
+        #loading-screen {
+            position: fixed; inset:0; z-index:9999;
+            background: var(--bg-deep);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            transition: opacity 0.6s, visibility 0.6s;
+        }
+        #loading-screen.hidden { opacity:0; visibility:hidden; }
+        .loader-globe {
+            font-size: 4rem; color: var(--accent-gold);
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader-bar {
+            width: 200px; height: 3px; background: var(--border);
+            border-radius: 2px; margin-top: 24px; overflow: hidden;
+        }
+        .loader-fill {
+            height: 100%; width: 0; background: var(--accent-gold);
+            border-radius: 2px; transition: width 0.3s;
+        }
+
+        /* الرأس */
+        header {
+            height: 60px; background: rgba(11,17,32,0.92);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center;
+            padding: 0 20px; gap: 16px; z-index: 100;
+            backdrop-filter: blur(12px);
+            position: relative;
+        }
+        .logo { display:flex; align-items:center; gap:10px; white-space:nowrap; }
+        .logo i { color: var(--accent-gold); font-size: 1.4rem; }
+        .logo span { font-weight:900; font-size:1.15rem; color: var(--text-primary); }
+
+        /* البحث */
+        .search-wrap {
+            position: relative; flex:1; max-width: 380px;
+        }
+        .search-wrap input {
+            width: 100%; padding: 8px 16px 8px 38px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text-primary);
+            font-family: 'Tajawal', sans-serif; font-size: 0.9rem;
+            outline: none; transition: border-color 0.3s;
+        }
+        .search-wrap input:focus { border-color: var(--accent-gold); }
+        .search-wrap input::placeholder { color: var(--text-muted); }
+        .search-wrap > i {
+            position: absolute; right: 12px; top: 50%;
+            transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;
+        }
+        #search-results {
+            position: absolute; top: 100%; right: 0; left: 0;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 8px; margin-top: 4px; max-height: 260px;
+            overflow-y: auto; z-index: 200; display: none;
+        }
+        #search-results.show { display: block; }
+        .search-item {
+            padding: 10px 14px; cursor: pointer;
+            display: flex; align-items: center; gap: 10px;
+            transition: background 0.2s;
+        }
+        .search-item:hover { background: var(--bg-card-hover); }
+        .search-item img { width:28px; height:18px; object-fit:cover; border-radius:2px; }
+        .search-item .s-name { font-size:0.9rem; }
+        .search-item .s-continent { font-size:0.75rem; color:var(--text-muted); margin-right:auto; }
+
+        /* أزرار التحكم */
+        .header-actions { display:flex; align-items:center; gap:8px; margin-right:auto; }
+        .mode-btn {
+            padding: 6px 14px; border-radius: 6px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-secondary); font-size: 0.8rem;
+            font-family: 'Tajawal', sans-serif; cursor: pointer;
+            transition: all 0.3s; white-space: nowrap;
+        }
+        .mode-btn:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
+        .mode-btn.active {
+            background: rgba(212,168,83,0.12);
+            border-color: var(--accent-gold); color: var(--accent-gold);
+        }
+        .globe-btn {
+            width: 38px; height: 38px; border-radius: 8px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-secondary); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s; font-size: 1rem;
+        }
+        .globe-btn:hover, .globe-btn.active {
+            border-color: var(--accent-teal); color: var(--accent-teal);
+            background: rgba(58,191,160,0.1);
+        }
+
+        /* المحتوى الرئيسي */
+        main { display: flex; height: calc(100vh - 60px - 52px); position: relative; }
+        #map-container {
+            flex: 1; position: relative; overflow: hidden;
+            background: var(--ocean);
+        }
+        #map-svg { width: 100%; height: 100%; display: block; }
+        .country-path {
+            stroke: rgba(255,255,255,0.08); stroke-width: 0.4;
+            cursor: pointer; transition: fill 0.3s;
+        }
+        .country-path:hover { stroke: rgba(212,168,83,0.6); stroke-width: 1; }
+        .country-path.selected {
+            stroke: var(--accent-gold); stroke-width: 1.5;
+            filter: drop-shadow(0 0 6px var(--glow-gold));
+        }
+
+        /* التلميح */
+        #tooltip {
+            position: fixed; pointer-events: none; z-index: 500;
+            background: rgba(17,27,48,0.95); border: 1px solid var(--border);
+            border-radius: 8px; padding: 8px 14px;
+            backdrop-filter: blur(8px); display: none;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+        }
+        #tooltip .tt-name { font-weight:700; font-size:0.9rem; color:var(--accent-gold); }
+        #tooltip .tt-stat { font-size:0.78rem; color:var(--text-secondary); margin-top:2px; }
+
+        /* أدوات الخريطة */
+        .map-tools {
+            position: absolute; bottom: 16px; left: 16px;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .map-tool-btn {
+            width: 36px; height: 36px; border-radius: 8px;
+            background: rgba(17,27,48,0.9); border: 1px solid var(--border);
+            color: var(--text-secondary); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s; font-size: 0.85rem;
+        }
+        .map-tool-btn:hover { border-color: var(--accent-gold); color: var(--accent-gold); }
+
+        /* لوحة المعلومات */
+        #info-panel {
+            width: 360px; background: var(--bg-primary);
+            border-right: 1px solid var(--border);
+            overflow-y: auto; transition: transform 0.4s cubic-bezier(0.22,1,0.36,1);
+            scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+        }
+        #info-panel.collapsed { transform: translateX(100%); }
+        .panel-header {
+            position: relative; padding: 20px; text-align: center;
+            background: linear-gradient(135deg, rgba(212,168,83,0.08), rgba(224,112,64,0.06));
+            border-bottom: 1px solid var(--border);
+        }
+        .panel-flag { width:64px; height:42px; object-fit:cover; border-radius:4px; margin:0 auto 12px; display:block; box-shadow:0 4px 12px rgba(0,0,0,0.4); }
+        .panel-country-name { font-size:1.35rem; font-weight:900; color:var(--text-primary); }
+        .panel-continent-badge {
+            display: inline-block; margin-top: 6px; padding: 3px 12px;
+            border-radius: 20px; font-size: 0.75rem; font-weight: 500;
+            background: rgba(212,168,83,0.1); color: var(--accent-gold);
+            border: 1px solid rgba(212,168,83,0.2);
+        }
+        .panel-close {
+            position: absolute; top:12px; left:12px; width:28px; height:28px;
+            border-radius:6px; background:var(--bg-card); border:1px solid var(--border);
+            color:var(--text-muted); cursor:pointer; display:flex;
+            align-items:center; justify-content:center; font-size:0.8rem;
+            transition: all 0.2s;
+        }
+        .panel-close:hover { color:var(--accent-copper); border-color:var(--accent-copper); }
+
+        .panel-body { padding: 16px 20px; }
+        .stat-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 0; border-bottom: 1px solid rgba(26,37,64,0.5);
+        }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-icon {
+            width: 36px; height: 36px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.85rem; flex-shrink: 0;
+        }
+        .stat-icon.pop { background:rgba(224,112,64,0.12); color:var(--accent-copper); }
+        .stat-icon.area { background:rgba(58,191,160,0.12); color:var(--accent-teal); }
+        .stat-icon.gdp { background:rgba(212,168,83,0.12); color:var(--accent-gold); }
+        .stat-icon.capital { background:rgba(100,120,180,0.12); color:#7b8fd4; }
+        .stat-icon.currency { background:rgba(180,130,200,0.12); color:#b488c8; }
+        .stat-icon.lang { background:rgba(130,190,130,0.12); color:#82be82; }
+        .stat-info { flex:1; }
+        .stat-label { font-size:0.72rem; color:var(--text-muted); }
+        .stat-value { font-size:0.95rem; font-weight:700; color:var(--text-primary); }
+        .stat-bar { height:3px; background:var(--border); border-radius:2px; margin-top:4px; overflow:hidden; }
+        .stat-bar-fill { height:100%; border-radius:2px; transition: width 0.8s cubic-bezier(0.22,1,0.36,1); }
+
+        .panel-desc {
+            margin-top: 12px; padding: 14px;
+            background: var(--bg-card); border-radius: 8px;
+            font-size: 0.85rem; line-height: 1.7;
+            color: var(--text-secondary); border: 1px solid var(--border);
+        }
+
+        /* لوحة الترحيب */
+        .welcome-panel { padding: 24px 20px; text-align: center; }
+        .welcome-icon { font-size:3rem; color:var(--accent-gold); margin-bottom:16px; opacity:0.6; }
+        .welcome-title { font-size:1.2rem; font-weight:700; margin-bottom:8px; }
+        .welcome-text { font-size:0.85rem; color:var(--text-secondary); line-height:1.8; }
+        .welcome-stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:20px; }
+        .welcome-stat {
+            padding:14px; background:var(--bg-card); border-radius:8px;
+            border:1px solid var(--border); text-align:center;
+        }
+        .welcome-stat-num { font-size:1.4rem; font-weight:700; color:var(--accent-gold); }
+        .welcome-stat-label { font-size:0.72rem; color:var(--text-muted); margin-top:2px; }
+
+        /* شريط الإحصائيات */
+        #stats-bar {
+            height: 52px; background: rgba(11,17,32,0.95);
+            border-top: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: center;
+            gap: 40px; padding: 0 20px;
+            backdrop-filter: blur(8px);
+        }
+        .sb-item { display:flex; align-items:center; gap:8px; }
+        .sb-icon { color:var(--accent-gold); font-size:0.8rem; }
+        .sb-label { font-size:0.72rem; color:var(--text-muted); }
+        .sb-value { font-size:0.85rem; font-weight:700; color:var(--text-primary); }
+
+        /* مفتاح الألوان */
+        #legend {
+            position: absolute; bottom: 16px; right: 16px;
+            background: rgba(17,27,48,0.92); border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px 16px;
+            backdrop-filter: blur(8px); z-index: 50;
+            display: none; min-width: 180px;
+        }
+        #legend.show { display: block; }
+        #legend h4 { font-size:0.78rem; color:var(--text-muted); margin-bottom:8px; }
+        .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+        .legend-color { width:14px; height:14px; border-radius:3px; }
+        .legend-label { font-size:0.78rem; color:var(--text-secondary); }
+        .legend-gradient {
+            height: 10px; border-radius: 3px; margin: 6px 0 4px;
+        }
+        .legend-labels { display:flex; justify-content:space-between; }
+        .legend-labels span { font-size:0.65rem; color:var(--text-muted); }
+
+        /* جزيئات الخلفية */
+        .bg-particles {
+            position: absolute; inset:0; pointer-events:none; z-index:0;
+        }
+
+        /* شريط التمرير المخصص */
+        ::-webkit-scrollbar { width:5px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+        ::-webkit-scrollbar-thumb:hover { background:var(--text-muted); }
+
+        /* استجابة */
+        @media (max-width: 768px) {
+            #info-panel { position:absolute; right:0; top:0; bottom:0; z-index:80; width:300px; }
+            .header-actions .mode-btn span { display:none; }
+            #stats-bar { gap:20px; }
+            .sb-label { display:none; }
+        }
+
+        /* حركة النبض */
+        @keyframes pulse-gold {
+            0%, 100% { box-shadow: 0 0 0 0 var(--glow-gold); }
+            50% { box-shadow: 0 0 0 8px rgba(212,168,83,0); }
+        }
+
+        /* حركة الظهور */
+        @keyframes fadeInUp {
+            from { opacity:0; transform:translateY(12px); }
+            to { opacity:1; transform:translateY(0); }
+        }
+        .fade-in-up { animation: fadeInUp 0.4s ease-out; }
+
+        /* حركة العداد */
+        @keyframes countUp { from { opacity:0.3; } to { opacity:1; } }
+
+        /* تأثير التوهج على الخريطة */
+        .ocean-glow {
+            position: absolute; top:50%; left:50%;
+            width: 70%; height: 70%;
+            transform: translate(-50%,-50%);
+            background: radial-gradient(ellipse, rgba(212,168,83,0.03) 0%, transparent 70%);
+            pointer-events: none; z-index:1;
+        }
+    </style>
+</head>
+<body>
+
+<!-- شاشة التحميل -->
+<div id="loading-screen">
+    <i class="fas fa-globe-americas loader-globe"></i>
+    <p style="margin-top:18px; color:var(--text-secondary); font-size:0.95rem;">جارٍ تحميل أطلس العالم...</p>
+    <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
+</div>
+
+<!-- التلميح -->
+<div id="tooltip">
+    <div class="tt-name"></div>
+    <div class="tt-stat"></div>
+</div>
+
+<!-- الرأس -->
+<header>
+    <div class="logo">
+        <i class="fas fa-globe-africa"></i>
+        <span>أطلس العالم</span>
+    </div>
+    <div class="search-wrap">
+        <i class="fas fa-search"></i>
+        <input type="text" id="search-input" placeholder="ابحث عن دولة..." autocomplete="off">
+        <div id="search-results"></div>
+    </div>
+    <div class="header-actions">
+        <button class="mode-btn active" data-mode="continent"><i class="fas fa-layer-group"></i> <span>القارة</span></button>
+        <button class="mode-btn" data-mode="population"><i class="fas fa-users"></i> <span>السكان</span></button>
+        <button class="mode-btn" data-mode="area"><i class="fas fa-expand"></i> <span>المساحة</span></button>
+        <button class="mode-btn" data-mode="gdp"><i class="fas fa-chart-line"></i> <span>الناتج</span></button>
+        <div style="width:1px;height:24px;background:var(--border);margin:0 4px;"></div>
+        <button class="globe-btn" id="globe-toggle" title="عرض الكرة الأرضية"><i class="fas fa-globe"></i></button>
+        <button class="globe-btn" id="reset-btn" title="إعادة تعيين العرض"><i class="fas fa-compress-arrows-alt"></i></button>
+    </div>
+</header>
+
+<!-- المحتوى الرئيسي -->
+<main>
+    <div id="map-container">
+        <svg id="map-svg"></svg>
+        <div class="ocean-glow"></div>
+        <div class="map-tools">
+            <button class="map-tool-btn" id="zoom-in" title="تكبير"><i class="fas fa-plus"></i></button>
+            <button class="map-tool-btn" id="zoom-out" title="تصغير"><i class="fas fa-minus"></i></button>
+        </div>
+        <div id="legend"></div>
+    </div>
+    <aside id="info-panel">
+        <div id="panel-content">
+            <div class="welcome-panel">
+                <div class="welcome-icon"><i class="fas fa-earth-americas"></i></div>
+                <div class="welcome-title">مرحبًا بك في أطلس العالم</div>
+                <div class="welcome-text">انقر على أي دولة لاستكشاف معلوماتها التفصيلية، أو استخدم شريط البحث للعثور على دولة محددة.</div>
+                <div class="welcome-stats">
+                    <div class="welcome-stat">
+                        <div class="welcome-stat-num font-data" data-target="195">0</div>
+                        <div class="welcome-stat-label">دولة</div>
+                    </div>
+                    <div class="welcome-stat">
+                        <div class="welcome-stat-num font-data" data-target="8">0</div>
+                        <div class="welcome-stat-label">مليار نسمة</div>
+                    </div>
+                    <div class="welcome-stat">
+                        <div class="welcome-stat-num font-data" data-target="7">0</div>
+                        <div class="welcome-stat-label">قارات</div>
+                    </div>
+                    <div class="welcome-stat">
+                        <div class="welcome-stat-num font-data" data-target="510">0</div>
+                        <div class="welcome-stat-label">مليون كم²</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+</main>
+
+<!-- شريط الإحصائيات -->
+<div id="stats-bar">
+    <div class="sb-item">
+        <i class="fas fa-flag sb-icon"></i>
+        <div><div class="sb-label">الدول</div><div class="sb-value font-data">195</div></div>
+    </div>
+    <div class="sb-item">
+        <i class="fas fa-users sb-icon"></i>
+        <div><div class="sb-label">سكان العالم</div><div class="sb-value font-data">8.1 مليار</div></div>
+    </div>
+    <div class="sb-item">
+        <i class="fas fa-expand sb-icon"></i>
+        <div><div class="sb-label">المساحة الكلية</div><div class="sb-value font-data">510M كم²</div></div>
+    </div>
+    <div class="sb-item">
+        <i class="fas fa-chart-line sb-icon"></i>
+        <div><div class="sb-label">الناتج العالمي</div><div class="sb-value font-data">$105 تريليون</div></div>
+    </div>
+</div>
+
+<script>
+// ============ بيانات الدول ============
+const countriesData = [
+    { id:840, iso2:"us", nameAr:"الولايات المتحدة", capitalAr:"واشنطن", population:331002651, area:9833520, gdp:25462, continent:"أمريكا الشمالية", currency:"دولار أمريكي", language:"الإنجليزية", desc:"أكبر اقتصاد في العالم وثالث أكبر دولة من حيث عدد السكان والمساحة" },
+    { id:124, iso2:"ca", nameAr:"كندا", capitalAr:"أوتاوا", population:37742154, area:9984670, gdp:2139, continent:"أمريكا الشمالية", currency:"دولار كندي", language:"الإنجليزية والفرنسية", desc:"ثاني أكبر دولة في العالم من حيث المساحة وتتميز بطبيعتها الخلابة" },
+    { id:484, iso2:"mx", nameAr:"المكسيك", capitalAr:"مدينة المكسيك", population:128932753, area:1964375, gdp:1322, continent:"أمريكا الشمالية", currency:"بيزو مكسيكي", language:"الإسبانية", desc:"دولة غنية بالثقافة والتاريخ وتعتبر من أكبر الاقتصادات في أمريكا اللاتينية" },
+    { id:76, iso2:"br", nameAr:"البرازيل", capitalAr:"برازيليا", population:212559417, area:8515767, gdp:1920, continent:"أمريكا الجنوبية", currency:"ريال برازيلي", language:"البرتغالية", desc:"أكبر دولة في أمريكا الجنوبية وخامس دولة من حيث المساحة في العالم" },
+    { id:32, iso2:"ar", nameAr:"الأرجنتين", capitalAr:"بوينس آيرس", population:45195774, area:2780400, gdp:632, continent:"أمريكا الجنوبية", currency:"بيزو أرجنتيني", language:"الإسبانية", desc:"ثاني أكبر دولة في أمريكا الجنوبية وتمتلك ثروات طبيعية هائلة" },
+    { id:170, iso2:"co", nameAr:"كولومبيا", capitalAr:"بوغوتا", population:50882891, area:1141748, gdp:334, continent:"أمريكا الجنوبية", currency:"بيزو كولومبي", language:"الإسبانية", desc:"دولة متنوعة جغرافيًا تشمل سلاسل جبلية وسواحل وغابات مطيرة" },
+    { id:152, iso2:"cl", nameAr:"تشيلي", capitalAr:"سانتياغو", population:19116201, area:756102, gdp:301, continent:"أمريكا الجنوبية", currency:"بيزو تشيلي", language:"الإسبانية", desc:"أطول دولة في العالم من الشمال إلى الجنوب وتمتلك مناظر طبيعية مذهلة" },
+    { id:604, iso2:"pe", nameAr:"بيرو", capitalAr:"ليما", population:32971854, area:1285216, gdp:242, continent:"أمريكا الجنوبية", currency:"سول بيروفي", language:"الإسبانية", desc:"موطن حضارة الإنكا القديمة وتمتلك تنوعًا بيئيًا استثنائيًا" },
+    { id:862, iso2:"ve", nameAr:"فنزويلا", capitalAr:"كراكاس", population:28435940, area:916445, gdp:82, continent:"أمريكا الجنوبية", currency:"بوليفار", language:"الإسبانية", desc:"تمتلك أكبر احتياطيات نفطية مؤكدة في العالم" },
+    { id:826, iso2:"gb", nameAr:"المملكة المتحدة", capitalAr:"لندن", population:67886011, area:242495, gdp:3070, continent:"أوروبا", currency:"جنيه إسترليني", language:"الإنجليزية", desc:"دولة صاحبة تاريخ استعماري طويل ومركز مالي عالمي رئيسي" },
+    { id:250, iso2:"fr", nameAr:"فرنسا", capitalAr:"باريس", population:65273511, area:640679, gdp:2782, continent:"أوروبا", currency:"يورو", language:"الفرنسية", desc:"من أبرز الدول الأوروبية ثقافيًا واقتصاديًا ووجهة سياحية عالمية" },
+    { id:276, iso2:"de", nameAr:"ألمانيا", capitalAr:"برلين", population:83783942, area:357114, gdp:4072, continent:"أوروبا", currency:"يورو", language:"الألمانية", desc:"أكبر اقتصاد في أوروبا ورابع أكبر اقتصاد في العالم" },
+    { id:380, iso2:"it", nameAr:"إيطاليا", capitalAr:"روما", population:60461826, area:301336, gdp:2010, continent:"أوروبا", currency:"يورو", language:"الإيطالية", desc:"مهد الحضارة الرومانية وعصر النهضة وتمتلك تراثًا ثقافيًا لا مثيل له" },
+    { id:724, iso2:"es", nameAr:"إسبانيا", capitalAr:"مدريد", population:46754778, area:505992, gdp:1397, continent:"أوروبا", currency:"يورو", language:"الإسبانية", desc:"ثاني أكبر دولة في أوروبا الغربية ووجهة سياحية من الدرجة الأولى" },
+    { id:643, iso2:"ru", nameAr:"روسيا", capitalAr:"موسكو", population:145934462, area:17098242, gdp:1775, continent:"أوروبا", currency:"روبل روسي", language:"الروسية", desc:"أكبر دولة في العالم من حيث المساحة تمتد عبر أوروبا وآسيا" },
+    { id:616, iso2:"pl", nameAr:"بولندا", capitalAr:"وارسو", population:37846611, area:312696, gdp:688, continent:"أوروبا", currency:"زلوتي", language:"البولندية", desc:"أكبر دولة في أوروبا الشرقية اقتصاديًا وشريك رئيسي في الاتحاد الأوروبي" },
+    { id:528, iso2:"nl", nameAr:"هولندا", capitalAr:"أمستردام", population:17134872, area:41850, gdp:1009, continent:"أوروبا", currency:"يورو", language:"الهولندية", desc:"دولة ذات اقتصاد قوي وتشتهر بتجارتها الدولية وشبكة قنواتها المائية" },
+    { id:752, iso2:"se", nameAr:"السويد", capitalAr:"ستوكهولم", population:10099265, area:450295, gdp:585, continent:"أوروبا", currency:"كرونا سويدية", language:"السويدية", desc:"دولة إسكندنافية تتميز بنظام رعاية اجتماعية متقدم واقتصاد مبتكر" },
+    { id:578, iso2:"no", nameAr:"النرويج", capitalAr:"أوسلو", population:5421241, area:323802, gdp:579, continent:"أوروبا", currency:"كرونة نرويجية", language:"النرويجية", desc:"من أغنى دول العالم بفضل ثروتها النفطية ونظامها الاجتماعي المتقدم" },
+    { id:756, iso2:"ch", nameAr:"سويسرا", capitalAr:"برن", population:8654622, area:41285, gdp:807, continent:"أوروبا", currency:"فرنك سويسري", language:"الألمانية والفرنسية والإيطالية", desc:"مركز مالي عالمي وموطن المؤسسات الدولية الكبرى" },
+    { id:300, iso2:"gr", nameAr:"اليونان", capitalAr:"أثينا", population:10423054, area:131990, gdp:214, continent:"أوروبا", currency:"يورو", language:"اليونانية", desc:"مهد الحضارة الغربية والديمقراطية والفلسفة الأولمبية" },
+    { id:620, iso2:"pt", nameAr:"البرتغال", capitalAr:"لشبونة", population:10196709, area:92212, gdp:251, continent:"أوروبا", currency:"يورو", language:"البرتغالية", desc:"واحدة من أقدم الدول في أوروبا وتمتلك تاريخًا بحريًا عريقًا" },
+    { id:156, iso2:"cn", nameAr:"الصين", capitalAr:"بكين", population:1439323776, area:9596961, gdp:17963, continent:"آسيا", currency:"يوان صيني", language:"الماندرين", desc:"أكبر دولة من حيث عدد السكان وثاني أكبر اقتصاد في العالم" },
+    { id:392, iso2:"jp", nameAr:"اليابان", capitalAr:"طوكيو", population:126476461, area:377975, gdp:4231, continent:"آسيا", currency:"ين ياباني", language:"اليابانية", desc:"ثالث أكبر اقتصاد في العالم ورائدة في التكنولوجيا والابتكار" },
+    { id:356, iso2:"in", nameAr:"الهند", capitalAr:"نيودلهي", population:1380004385, area:3287263, gdp:3385, continent:"آسيا", currency:"روبية هندية", language:"الهندية والإنجليزية", desc:"أكبر دولة ديمقراطية من حيث عدد السكان واقتصاد متنامٍ بسرعة" },
+    { id:410, iso2:"kr", nameAr:"كوريا الجنوبية", capitalAr:"سيول", population:51269185, area:100210, gdp:1665, continent:"آسيا", currency:"وون كوري", language:"الكورية", desc:"قوة تكنولوجية رائدة وواحدة من أكبر الاقتصادات في آسيا" },
+    { id:682, iso2:"sa", nameAr:"المملكة العربية السعودية", capitalAr:"الرياض", population:34813871, area:2149690, gdp:1108, continent:"آسيا", currency:"ريال سعودي", language:"العربية", desc:"أكبر دولة في الشرق الأوسط وأكبر مصدر للنفط في العالم" },
+    { id:784, iso2:"ae", nameAr:"الإمارات العربية المتحدة", capitalAr:"أبوظبي", population:9890402, area:83600, gdp:507, continent:"آسيا", currency:"درهم إماراتي", language:"العربية", desc:"مركز مالي وتجاري عالمي وواحدة من أسرع الدول تطورًا" },
+    { id:792, iso2:"tr", nameAr:"تركيا", capitalAr:"أنقرة", population:84339067, area:783562, gdp:905, continent:"آسيا", currency:"ليرة تركية", language:"التركية", desc:"جسر بين أوروبا وآسيا وتمتلك تراثًا ثقافيًا غنيًا ومتنوعًا" },
+    { id:364, iso2:"ir", nameAr:"إيران", capitalAr:"طهران", population:83992949, area:1648195, gdp:366, continent:"آسيا", currency:"ريال إيراني", language:"الفارسية", desc:"من أقدم الحضارات في العالم وتمتلك موارد طبيعية هائلة" },
+    { id:368, iso2:"iq", nameAr:"العراق", capitalAr:"بغداد", population:40222493, area:438317, gdp:264, continent:"آسيا", currency:"دينار عراقي", language:"العربية والكردية", desc:"مهد الحضارات القديمة ويمتلك ثاني أكبر احتياطي نفطي في العالم" },
+    { id:764, iso2:"th", nameAr:"تايلاند", capitalAr:"بانكوك", population:69799978, area:513120, gdp:535, continent:"آسيا", currency:"بات تايلاندي", language:"التايلاندية", desc:"واحدة من أبرز الوجهات السياحية في العالم واقتصاد متنوع" },
+    { id:360, iso2:"id", nameAr:"إندونيسيا", capitalAr:"جاكرتا", population:273523615, area:1904569, gdp:1319, continent:"آسيا", currency:"روبية إندونيسية", language:"الإندونيسية", desc:"أكبر أرخبيل في العالم ورابع أكبر دولة من حيث عدد السكان" },
+    { id:586, iso2:"pk", nameAr:"باكستان", capitalAr:"إسلام آباد", population:220892340, area:881913, gdp:348, continent:"آسيا", currency:"روبية باكستانية", language:"الأردية والإنجليزية", desc:"خامس أكبر دولة من حيث عدد السكان وتمتلك قوة نووية" },
+    { id:50, iso2:"bd", nameAr:"بنغلاديش", capitalAr:"دكا", population:164689383, area:147570, gdp:416, continent:"آسيا", currency:"تاكا", language:"البنغالية", desc:"واحدة من أكثر الدول كثافة سكانية واقتصاد متنامٍ بسرعة" },
+    { id:704, iso2:"vn", nameAr:"فيتنام", capitalAr:"هانوي", population:97338579, area:331212, gdp:408, continent:"آسيا", currency:"دونغ فيتنامي", language:"الفيتنامية", desc:"واحدة من أسرع الاقتصادات نموًا في جنوب شرق آسيا" },
+    { id:608, iso2:"ph", nameAr:"الفلبين", capitalAr:"مانيلا", population:109581078, area:300000, gdp:404, continent:"آسيا", currency:"بيزو فلبيني", language:"الفلبينية والإنجليزية", desc:"أرخبيل يضم أكثر من 7000 جزيرة وثقافة نابضة بالحياة" },
+    { id:376, iso2:"il", nameAr:"إسرائيل", capitalAr:"القدس", population:8655535, area:20770, gdp:525, continent:"آسيا", currency:"شيكل جديد", language:"العبرية والعربية", desc:"دولة رائدة في التكنولوجيا والابتكار والبحث العلمي" },
+    { id:400, iso2:"jo", nameAr:"الأردن", capitalAr:"عمّان", population:10203134, area:89342, gdp:47, continent:"آسيا", currency:"دينار أردني", language:"العربية", desc:"واحة استقرار في الشرق الأوسط وتمتلك مواقع أثرية وسياحية فريدة" },
+    { id:414, iso2:"kw", nameAr:"الكويت", capitalAr:"الكويت", population:4270571, area:17818, gdp:136, continent:"آسيا", currency:"دينار كويتي", language:"العربية", desc:"دولة نفطية غنية تمتلك أحد أعلى نصوص الفرد من الناتج المحلي" },
+    { id:818, iso2:"eg", nameAr:"مصر", capitalAr:"القاهرة", population:102334404, area:1002450, gdp:404, continent:"أفريقيا", currency:"جنيه مصري", language:"العربية", desc:"موطن أحد أقدم الحضارات في التاريخ وأكبر دولة عربية من حيث عدد السكان" },
+    { id:566, iso2:"ng", nameAr:"نيجيريا", capitalAr:"أبوجا", population:206139589, area:923768, gdp:440, continent:"أفريقيا", currency:"نايرة", language:"الإنجليزية", desc:"أكبر دولة في أفريقيا من حيث عدد السكان والاقتصاد" },
+    { id:710, iso2:"za", nameAr:"جنوب أفريقيا", capitalAr:"بريتوريا", population:59308690, area:1221037, gdp:399, continent:"أفريقيا", currency:"راند", language:"11 لغة رسمية", desc:"ثاني أكبر اقتصاد في أفريقيا وتمتلك ثروات معدنية هائلة" },
+    { id:404, iso2:"ke", nameAr:"كينيا", capitalAr:"نيروبي", population:53771296, area:580367, gdp:113, continent:"أفريقيا", currency:"شلن كيني", language:"السواحيلية والإنجليزية", desc:"مركز اقتصادي ومالي رئيسي في شرق أفريقيا وموطن سافانا شهيرة" },
+    { id:504, iso2:"ma", nameAr:"المغرب", capitalAr:"الرباط", population:36910560, area:446550, gdp:132, continent:"أفريقيا", currency:"درهم مغربي", language:"العربية والأمازيغية", desc:"مزيج فريد من الثقافات الأفريقية والعربية والأوروبية" },
+    { id:12, iso2:"dz", nameAr:"الجزائر", capitalAr:"الجزائر", population:43851044, area:2381741, gdp:167, continent:"أفريقيا", currency:"دينار جزائري", language:"العربية والأمازيغية", desc:"أكبر دولة في أفريقيا من حيث المساحة وتمتلك احتياطات غاز طبيعية ضخمة" },
+    { id:231, iso2:"et", nameAr:"إثيوبيا", capitalAr:"أديس أبابا", population:114963588, area:1104300, gdp:111, continent:"أفريقيا", currency:"بيرة إثيوبية", language:"الأمهارية", desc:"واحدة من أسرع الاقتصادات نموًا في أفريقيا وثاني أكبر دولة من حيث السكان" },
+    { id:834, iso2:"tz", nameAr:"تنزانيا", capitalAr:"دودوما", population:59734218, area:945087, gdp:75, continent:"أفريقيا", currency:"شلن تنزاني", language:"السواحيلية والإنجليزية", desc:"موطن أعلى قمة في أفريقيا وجزيرة زنجبار التاريخية" },
+    { id:288, iso2:"gh", nameAr:"غانا", capitalAr:"أكرا", population:31072940, area:238535, gdp:72, continent:"أفريقيا", currency:"سيدي", language:"الإنجليزية", desc:"من أكثر الدول الأفريقية استقرارًا ديمقراطيًا وثاني أكبر منتج للكاكاو" },
+    { id:788, iso2:"tn", nameAr:"تونس", capitalAr:"تونس", population:11818619, area:163610, gdp:46, continent:"أفريقيا", currency:"دينار تونسي", language:"العربية", desc:"موطن قرطاج القديمة وشرارة الربيع العربي" },
+    { id:36, iso2:"au", nameAr:"أستراليا", capitalAr:"كانبرا", population:25499884, area:7692024, gdp:1675, continent:"أوقيانوسيا", currency:"دولار أسترالي", language:"الإنجليزية", desc:"سادس أكبر دولة في العالم من حيث المساحة وقارة ودولة في آن واحد" },
+    { id:554, iso2:"nz", nameAr:"نيوزيلندا", capitalAr:"ويلينغتون", population:4822233, area:270467, gdp:249, continent:"أوقيانوسيا", currency:"دولار نيوزيلندي", language:"الإنجليزية والماورية", desc:"تمتلك مناظر طبيعية خلابة ومتنوعة بيئيًا استثنائية" },
+    { id:352, iso2:"is", nameAr:"آيسلندا", capitalAr:"ريكيافيك", population:341243, area:103000, gdp:25, continent:"أوروبا", currency:"كرونة آيسلندية", language:"الآيسلندية", desc:"جزيرة بركانية بأرضها الجليدية وينابيعها الحارة" },
+    { id:372, iso2:"ie", nameAr:"أيرلندا", capitalAr:"دبلن", population:4937786, area:70273, gdp:529, continent:"أوروبا", currency:"يورو", language:"الأيرلندية والإنجليزية", desc:"مركز تكنولوجي أوروبي رئيسي وتمتلك ثقافة غنية" },
+    { id:578, iso2:"no", nameAr:"النرويج", capitalAr:"أوسلو", population:5421241, area:323802, gdp:579, continent:"أوروبا", currency:"كرونة نرويجية", language:"النرويجية", desc:"من أغنى دول العالم بفضل ثروتها النفطية ونظامها الاجتماعي" },
+    { id:100, iso2:"bg", nameAr:"بلغاريا", capitalAr:"صوفيا", population:6948445, area:110879, gdp:88, continent:"أوروبا", currency:"ليف", language:"البلغارية", desc:"عضو في الاتحاد الأوروبي وتمتلك سواحل على البحر الأسود" },
+    { id:642, iso2:"ro", nameAr:"رومانيا", capitalAr:"بوخارست", population:19237691, area:238391, gdp:299, continent:"أوروبا", currency:"ليو", language:"الرومانية", desc:"دولة أوروبية شرقية غنية بالتاريخ والمناظر الطبيعية" },
+    { id:348, iso2:"hu", nameAr:"هنغاريا", capitalAr:"بودابست", population:9660351, area:93028, gdp:188, continent:"أوروبا", currency:"فورنت", language:"الهنغارية", desc:"قلب أوروبا المركزي وتمتلك تراثًا موسيقيًا وعمرانيًا فريدًا" },
+    { id:203, iso2:"cz", nameAr:"التشيك", capitalAr:"براغ", population:10708981, area:78866, gdp:290, continent:"أوروبا", currency:"كرونة", language:"التشيكية", desc:"واحدة من أكثر الدول الأوروبية استقرارًا وازدهارًا" },
+    { id:508, iso2:"mz", nameAr:"موزمبيق", capitalAr:"مابوتو", population:31255435, area:801590, gdp:16, continent:"أفريقيا", currency:"ميتيكال", language:"البرتغالية", desc:"دولة ساحلية في جنوب شرق أفريقيا غنية بالموارد الطبيعية" },
+    { id:458, iso2:"my", nameAr:"ماليزيا", capitalAr:"كوالالمبور", population:32365999, area:330803, gdp:407, continent:"آسيا", currency:"رينغيت", language:"الملايوية", desc:"مركز تجاري رئيسي في جنوب شرق آسيا ومتنوعة عرقيًا" },
+    { id:702, iso2:"sg", nameAr:"سنغافورة", capitalAr:"سنغافورة", population:5850342, area:728, gdp:397, continent:"آسيا", currency:"دولار سنغافوري", language:"الإنجليزية والماندرين والمالايو والتاميل", desc:"واحدة من أكثر الدول تقدمًا وازدهارًا في العالم" },
+];
+
+// خريطة البحث السريع
+const dataMap = {};
+countriesData.forEach(c => dataMap[c.id] = c);
+
+// ألوان القارات
+const continentColors = {
+    "أمريكا الشمالية": "#e07040",
+    "أمريكا الجنوبية": "#c06080",
+    "أوروبا": "#5b8dd4",
+    "آسيا": "#d4a853",
+    "أفريقيا": "#45b7a0",
+    "أوقيانوسيا": "#78b060",
+    "أنتاركتيكا": "#8899aa"
+};
+
+// ============ المتغيرات العامة ============
+let currentMode = 'continent';
+let isGlobeMode = false;
+let selectedCountryId = null;
+let worldGeo = null;
+let svg, g, projection, path, zoom;
+let width, height;
+
+// ============ التهيئة ============
+async function init() {
+    setLoaderProgress(20);
+    setupDimensions();
+    setLoaderProgress(30);
+    setupSVG();
+    setupProjection();
+    setLoaderProgress(40);
+    setupZoom();
+    setLoaderProgress(50);
+    await loadWorldData();
+    setLoaderProgress(80);
+    renderMap();
+    setLoaderProgress(90);
+    setupEventListeners();
+    animateWelcomeCounters();
+    setLoaderProgress(100);
+    setTimeout(() => {
+        document.getElementById('loading-screen').classList.add('hidden');
+    }, 400);
+}
+
+function setLoaderProgress(pct) {
+    const fill = document.getElementById('loader-fill');
+    if (fill) fill.style.width = pct + '%';
+}
+
+// ============ الأبعاد ============
+function setupDimensions() {
+    const container = document.getElementById('map-container');
+    width = container.clientWidth;
+    height = container.clientHeight;
+}
+
+// ============ إعداد SVG ============
+function setupSVG() {
+    svg = d3.select('#map-svg')
+        .attr('width', width)
+        .attr('height', height);
+
+    // مرشح التوهج
+    const defs = svg.append('defs');
+    const filter = defs.append('filter').attr('id', 'glow');
+    filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
+    const merge = filter.append('feMerge');
+    merge.append('feMergeNode').attr('in', 'blur');
+    merge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+    g = svg.append('g');
+}
+
+// ============ إعداد الإسقاط ============
+function setupProjection() {
+    projection = d3.geoNaturalEarth1()
+        .fitSize([width - 40, height - 40], { type: "Sphere" });
+    path = d3.geoPath().projection(projection);
+}
+
+// ============ إعداد التكبير ============
+function setupZoom() {
+    zoom = d3.zoom()
+        .scaleExtent([1, 12])
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+    svg.call(zoom);
+}
+
+// ============ تحميل البيانات ============
+async function loadWorldData() {
+    try {
+        const world = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+        worldGeo = topojson.feature(world, world.objects.countries);
+    } catch (err) {
+        console.error('خطأ في تحميل بيانات الخريطة:', err);
+    }
+}
+
+// ============ رسم الخريطة ============
+function renderMap() {
+    if (!worldGeo) return;
+
+    g.selectAll('*').remove();
+
+    // الدائرة الخارجية (الكرة الأرضية)
+    if (isGlobeMode) {
+        g.append('circle')
+            .attr('cx', width / 2)
+            .attr('cy', height / 2)
+            .attr('r', projection.scale())
+            .attr('fill', '#0a1228')
+            .attr('stroke', 'rgba(212,168,83,0.15)')
+            .attr('stroke-width', 1.5);
+    }
+
+    // الشبكة الجغرافية
+    const graticule = d3.geoGraticule();
+    g.append('path')
+        .datum(graticule())
+        .attr('d', path)
+        .attr('fill', 'none')
+        .attr('stroke', 'rgba(255,255,255,0.04)')
+        .attr('stroke-width', 0.3);
+
+    // الحدود الخارجية
+    g.append('path')
+        .datum({ type: 'Sphere' })
+        .attr('d', path)
+        .attr('fill', 'none')
+        .attr('stroke', 'rgba(212,168,83,0.12)')
+        .attr('stroke-width', 0.8);
+
+    // الدول
+    g.selectAll('.country-path')
+        .data(worldGeo.features)
+        .enter()
+        .append('path')
+        .attr('class', d => 'country-path' + (d.id == selectedCountryId ? ' selected' : ''))
+        .attr('d', path)
+        .attr('fill', d => getCountryFill(d))
+        .on('mouseover', handleMouseOver)
+        .on('mousemove', handleMouseMove)
+        .on('mouseout', handleMouseOut)
+        .on('click', handleClick);
+
+    updateLegend();
+}
+
+// ============ ألوان الدول ============
+function getCountryFill(d) {
+    const data = dataMap[d.id];
+    if (!data) return '#1a2540';
+
+    switch (currentMode) {
+        case 'continent':
+            return continentColors[data.continent] || '#1a2540';
+        case 'population':
+            return populationColor(data.population);
+        case 'area':
+            return areaColor(data.area);
+        case 'gdp':
+            return gdpColor(data.gdp);
+        default:
+            return continentColors[data.continent] || '#1a2540';
+    }
+}
+
+const popScale = d3.scaleSequentialLog()
+    .domain([500000, 1500000000])
+    .interpolator(d3.interpolateYlOrRd)
+    .clamp(true);
+
+const areaScale = d3.scaleSequentialLog()
+    .domain([500, 18000000])
+    .interpolator(d3.interpolatePuBuGn)
+    .clamp(true);
+
+const gdpScale = d3.scaleSequentialLog()
+    .domain([10, 26000])
+    .interpolator(d3.interpolateYlGnBu)
+    .clamp(true);
+
+function populationColor(pop) {
+    return popScale(Math.max(500000, pop));
+}
+function areaColor(area) {
+    return areaScale(Math.max(500, area));
+}
+function gdpColor(gdp) {
+    return gdpScale(Math.max(10, gdp));
+}
+
+// ============ التلميح ============
+const tooltip = document.getElementById('tooltip');
+
+function handleMouseOver(event, d) {
+    const data = dataMap[d.id];
+    if (!data) return;
+    d3.select(this).raise();
+    tooltip.style.display = 'block';
+    tooltip.querySelector('.tt-name').textContent = data.nameAr;
+    const popStr = data.population > 1000000 ? (data.population / 1000000).toFixed(1) + ' مليون' : data.population.toLocaleString('ar');
+    tooltip.querySelector('.tt-stat').textContent = popStr + ' نسمة';
+}
+
+function handleMouseMove(event) {
+    const x = event.clientX;
+    const y = event.clientY;
+    const tw = tooltip.offsetWidth;
+    const th = tooltip.offsetHeight;
+    tooltip.style.left = (x + 16 + tw > window.innerWidth ? x - tw - 10 : x + 16) + 'px';
+    tooltip.style.top = (y - th / 2) + 'px';
+}
+
+function handleMouseOut(event, d) {
+    tooltip.style.display = 'none';
+}
+
+// ============ النقر على دولة ============
+function handleClick(event, d) {
+    const data = dataMap[d.id];
+    if (!data) return;
+
+    // تحديد الدولة
+    g.selectAll('.country-path').classed('selected', false);
+    d3.select(this).classed('selected', true);
+    selectedCountryId = d.id;
+
+    // تحديث لوحة المعلومات
+    updateInfoPanel(data);
+
+    // تكبير على الدولة
+    zoomToCountry(d);
+}
+
+function zoomToCountry(d) {
+    const [[x0, y0], [x1, y1]] = path.bounds(d);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const scale = Math.max(1, Math.min(8, 0.7 / Math.max(dx / width, dy / height)));
+    const translate = [width / 2 - scale * cx, height / 2 - scale * cy];
+
+    svg.transition().duration(750)
+        .call(zoom.transform,
+            d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+        );
+}
+
+// ============ لوحة المعلومات ============
+function updateInfoPanel(data) {
+    const panel = document.getElementById('panel-content');
+    const maxPop = 1439323776;
+    const maxArea = 17098242;
+    const maxGdp = 25462;
+    const popPct = Math.min(100, (data.population / maxPop) * 100);
+    const areaPct = Math.min(100, (data.area / maxArea) * 100);
+    const gdpPct = Math.min(100, (data.gdp / maxGdp) * 100);
+
+    const popStr = data.population > 1000000
+        ? (data.population / 1000000).toFixed(1) + ' مليون'
+        : data.population.toLocaleString('ar');
+    const areaStr = data.area.toLocaleString('ar') + ' كم²';
+    const gdpStr = data.gdp >= 1000
+        ? (data.gdp / 1000).toFixed(1) + ' تريليون $'
+        : data.gdp + ' مليار $';
+
+    panel.innerHTML = `
+        <div class="panel-header fade-in-up">
+            <button class="panel-close" onclick="closePanel()"><i class="fas fa-times"></i></button>
+            <img class="panel-flag" src="https://flagcdn.com/w80/${data.iso2}.png" alt="${data.nameAr}" onerror="this.style.display='none'">
+            <div class="panel-country-name">${data.nameAr}</div>
+            <span class="panel-continent-badge">${data.continent}</span>
+        </div>
+        <div class="panel-body fade-in-up" style="animation-delay:0.1s">
+            <div class="stat-row">
+                <div class="stat-icon capital"><i class="fas fa-landmark"></i></div>
+                <div class="stat-info">
+                    <div class="stat-label">العاصمة</div>
+                    <div class="stat-value">${data.capitalAr}</div>
+                </div>
+            </div>
+            <div class="stat-row">
+                <div class="stat-icon pop"><i class="fas fa-users"></i></div>
+                <div class="stat-info">
+                    <div class="stat-label">عدد السكان</div>
+                    <div class="stat-value font-data">${popStr}</div>
+                    <div class="stat-bar"><div class="stat-bar-fill" style="width:${popPct}%;background:var(--accent-copper);"></div></div>
+                </div>
+            </div>
+            <div class="stat-row">
+                <div class="stat-icon area"><i class="fas fa-expand"></i></div>
+                <div class="stat-info">
+                    <div class="stat-label">المساحة</div>
+                    <div class="stat-value font-data">${areaStr}</div>
+                    <div class="stat-bar"><div class="stat-bar-fill" style="width:${areaPct}%;background:var(--accent-teal);"></div></div>
+                </div>
+            </div>
+            <div class="stat-row">
+                <div class="stat-icon gdp"><i class="fas fa-chart-line"></i></div>
+                <div class="stat-info">
+                    <div class="stat-label">الناتج المحلي الإجمالي</div>
+                    <div class="stat-value font-data">${gdpStr}</div>
+                    <div class="stat-bar"><div class="stat-bar-fill" style="width:${gdpPct}%;background:var(--accent-gold);"></div></div>
+                </div>
+            </div>
+            <div class="stat-row">
+                <div class="stat-icon currency"><i class="fas fa-coins"></i></div>
+                <div class="stat-info">
+                    <div class="stat-label">العملة</div>
+                    <div class="stat-value">${data.currency}</div>
+                </div>
+            </div>
+            <div class="stat-row">
+                <div class="stat-icon lang"><i class="fas fa-language"></i></div>
+                <div class="stat-info">
+                    <div class="stat-label">اللغة</div>
+                    <div class="stat-value">${data.language}</div>
+                </div>
+            </div>
+            <div class="panel-desc">
+                <i class="fas fa-info-circle" style="color:var(--accent-gold);margin-left:6px;"></i>
+                ${data.desc}
+            </div>
+        </div>
+    `;
+}
+
+function closePanel() {
+    selectedCountryId = null;
+    g.selectAll('.country-path').classed('selected', false);
+    resetView();
+    document.getElementById('panel-content').innerHTML = `
+        <div class="welcome-panel">
+            <div class="welcome-icon"><i class="fas fa-earth-americas"></i></div>
+            <div class="welcome-title">مرحبًا بك في أطلس العالم</div>
+            <div class="welcome-text">انقر على أي دولة لاستكشاف معلوماتها التفصيلية، أو استخدم شريط البحث للعثور على دولة محددة.</div>
+            <div class="welcome-stats">
+                <div class="welcome-stat">
+                    <div class="welcome-stat-num font-data" data-target="195">0</div>
+                    <div class="welcome-stat-label">دولة</div>
+                </div>
+                <div class="welcome-stat">
+                    <div class="welcome-stat-num font-data" data-target="8">0</div>
+                    <div class="welcome-stat-label">مليار نسمة</div>
+                </div>
+                <div class="welcome-stat">
+                    <div class="welcome-stat-num font-data" data-target="7">0</div>
+                    <div class="welcome-stat-label">قارات</div>
+                </div>
+                <div class="welcome-stat">
+                    <div class="welcome-stat-num font-data" data-target="510">0</div>
+                    <div class="welcome-stat-label">مليون كم²</div>
+                </div>
+            </div>
+        </div>
+    `;
+    animateWelcomeCounters();
+}
+
+// ============ إعادة تعيين العرض ============
+function resetView() {
+    svg.transition().duration(750)
+        .call(zoom.transform, d3.zoomIdentity);
+}
+
+// ============ البحث ============
+function handleSearch(query) {
+    const results = document.getElementById('search-results');
+    if (!query || query.length < 1) {
+        results.classList.remove('show');
+        return;
+    }
+    const q = query.trim().toLowerCase();
+    const matches = countriesData.filter(c =>
+        c.nameAr.includes(q) ||
+        c.capitalAr.includes(q) ||
+        c.continent.includes(q)
+    ).slice(0, 8);
+
+    if (matches.length === 0) {
+        results.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.85rem;text-align:center;">لا توجد نتائج</div>';
+        results.classList.add('show');
+        return;
+    }
+
+    results.innerHTML = matches.map(c => `
+        <div class="search-item" data-id="${c.id}">
+            <img src="https://flagcdn.com/w40/${c.iso2}.png" alt="" onerror="this.style.display='none'">
+            <span class="s-name">${c.nameAr}</span>
+            <span class="s-continent">${c.continent}</span>
+        </div>
+    `).join('');
+    results.classList.add('show');
+
+    // ربط أحداث النقر
+    results.querySelectorAll('.search-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = parseInt(item.dataset.id);
+            selectCountryById(id);
+            results.classList.remove('show');
+            document.getElementById('search-input').value = '';
+        });
+    });
+}
+
+function selectCountryById(id) {
+    const data = dataMap[id];
+    if (!data || !worldGeo) return;
+
+    const feature = worldGeo.features.find(f => f.id == id);
+    if (!feature) return;
+
+    selectedCountryId = id;
+    g.selectAll('.country-path').classed('selected', false);
+    g.selectAll('.country-path').filter(d => d.id == id).classed('selected', true);
+    updateInfoPanel(data);
+    zoomToCountry(feature);
+}
+
+// ============ مفتاح الألوان ============
+function updateLegend() {
+    const legend = document.getElementById('legend');
+
+    if (currentMode === 'continent') {
+        const continents = Object.keys(continentColors);
+        legend.innerHTML = `
+            <h4>تلوين حسب القارة</h4>
+            ${continents.map(c => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background:${continentColors[c]}"></div>
+                    <div class="legend-label">${c}</div>
+                </div>
+            `).join('')}
+        `;
+    } else if (currentMode === 'population') {
+        legend.innerHTML = `
+            <h4>الكثافة السكانية</h4>
+            <div class="legend-gradient" style="background:linear-gradient(to left, #800026, #fd8d3c, #ffffcc);"></div>
+            <div class="legend-labels"><span>1.4 مليار</span><span>500 ألف</span></div>
+        `;
+    } else if (currentMode === 'area') {
+        legend.innerHTML = `
+            <h4>المساحة (كم²)</h4>
+            <div class="legend-gradient" style="background:linear-gradient(to left, #005824, #78c679, #ffffcc);"></div>
+            <div class="legend-labels"><span>17 مليون</span><span>500</span></div>
+        `;
+    } else if (currentMode === 'gdp') {
+        legend.innerHTML = `
+            <h4>الناتج المحلي (مليار $)</h4>
+            <div class="legend-gradient" style="background:linear-gradient(to left, #0c2c84, #4eb3d3, #ffffcc);"></div>
+            <div class="legend-labels"><span>25 تريليون</span><span>10 مليار</span></div>
+        `;
+    }
+    legend.classList.add('show');
+}
+
+// ============ تبديل الكرة ============
+function toggleGlobe() {
+    isGlobeMode = !isGlobeMode;
+    document.getElementById('globe-toggle').classList.toggle('active', isGlobeMode);
+
+    if (isGlobeMode) {
+        projection = d3.geoOrthographic()
+            .fitSize([width - 40, height - 40], { type: "Sphere" });
+        path = d3.geoPath().projection(projection);
+
+        // تعطيل التكبير العادي وتمكين السحب للتدوير
+        svg.on('.zoom', null);
+        setupGlobeDrag();
+    } else {
+        projection = d3.geoNaturalEarth1()
+            .fitSize([width - 40, height - 40], { type: "Sphere" });
+        path = d3.geoPath().projection(projection);
+
+        // إعادة التكبير
+        svg.on('.zoom', null);
+        svg.call(zoom);
+        svg.call(zoom.transform, d3.zoomIdentity);
+    }
+
+    renderMap();
+}
+
+function setupGlobeDrag() {
+    let rotateStart, dragStart;
+    const drag = d3.drag()
+        .on('start', function(event) {
+            rotateStart = projection.rotate();
+            dragStart = [event.x, event.y];
+        })
+        .on('drag', function(event) {
+            const sensitivity = 75 / projection.scale();
+            projection.rotate([
+                rotateStart[0] + (event.x - dragStart[0]) * sensitivity,
+                rotateStart[1] - (event.y - dragStart[1]) * sensitivity
+            ]);
+            updateGlobePaths();
+        });
+    svg.call(drag);
+
+    // تكبير بعجلة الماوس
+    svg.on('wheel', function(event) {
+        event.preventDefault();
+        const scale = projection.scale();
+        const newScale = Math.max(100, Math.min(2000, scale * (event.deltaY > 0 ? 0.92 : 1.08)));
+        projection.scale(newScale);
+        updateGlobePaths();
+    }, { passive: false });
+}
+
+function updateGlobePaths() {
+    g.selectAll('.country-path').attr('d', path);
+    g.selectAll('path').attr('d', function(d) {
+        return path(d) || '';
+    });
+}
+
+// ============ أحداث المستمعين ============
+function setupEventListeners() {
+    // البحث
+    const searchInput = document.getElementById('search-input');
+    searchInput.addEventListener('input', (e) => handleSearch(e.target.value));
+    searchInput.addEventListener('focus', (e) => {
+        if (e.target.value) handleSearch(e.target.value);
+    });
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-wrap')) {
+            document.getElementById('search-results').classList.remove('show');
+        }
+    });
+
+    // أزرار الأوضاع
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentMode = btn.dataset.mode;
+            g.selectAll('.country-path').attr('fill', d => getCountryFill(d));
+            updateLegend();
+        });
+    });
+
+    // تبديل الكرة
+    document.getElementById('globe-toggle').addEventListener('click', toggleGlobe);
+
+    // إعادة تعيين
+    document.getElementById('reset-btn').addEventListener('click', () => {
+        if (isGlobeMode) toggleGlobe();
+        closePanel();
+    });
+
+    // تكبير / تصغير
+    document.getElementById('zoom-in').addEventListener('click', () => {
+        svg.transition().duration(300).call(zoom.scaleBy, 1.5);
+    });
+    document.getElementById('zoom-out').addEventListener('click', () => {
+        svg.transition().duration(300).call(zoom.scaleBy, 0.67);
+    });
+
+    // اختصارات لوحة المفاتيح
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closePanel();
+        if (e.key === '/' && document.activeElement !== searchInput) {
+            e.preventDefault();
+            searchInput.focus();
+        }
+    });
+
+    // تغيير حجم النافذة
+    window.addEventListener('resize', () => {
+        setupDimensions();
+        svg.attr('width', width).attr('height', height);
+        if (isGlobeMode) {
+            projection = d3.geoOrthographic()
+                .fitSize([width - 40, height - 40], { type: "Sphere" });
+        } else {
+            projection = d3.geoNaturalEarth1()
+                .fitSize([width - 40, height - 40], { type: "Sphere" });
+        }
+        path = d3.geoPath().projection(projection);
+        renderMap();
+        if (!isGlobeMode) svg.call(zoom.transform, d3.zoomIdentity);
+    });
+}
+
+// ============ عدادات الترحيب ============
+function animateWelcomeCounters() {
+    document.querySelectorAll('.welcome-stat-num[data-target]').forEach(el => {
+        const target = parseInt(el.dataset.target);
+        let current = 0;
+        const increment = target / 60;
+        const timer = setInterval(() => {
+            current += increment;
+            if (current >= target) {
+                current = target;
+                clearInterval(timer);
+            }
+            el.textContent = Math.floor(current);
+        }, 20);
+    });
+}
+
+// ============ تشغيل ============
+init();
+</script>
+</body>
+</html>
